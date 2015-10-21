@@ -1,55 +1,66 @@
 #include <AccelStepper.h>
 #include <SerialCommand.h>
-SerialCommand SCmd;
 
+SerialCommand SCmd;
 
 int dirPin = 6;
 int stepperPin = 5;
 int enablePin = 4;
-float maxSpeed = 600.0;
-float speed = 600.0;
-float accel = 600.0;
+int switchPin = 2;
+
+float maxSpeed = 500.0;
+float rotSpeed = 500.0;
+float accel = 500.0;
 
 int stepsPerRotation = 200;
 int rotations = 1;
+bool clockwise = false;
 
 int stepperControl = 0;
+
+int counter = 0;
 
 AccelStepper stepper(1,stepperPin,dirPin);
 
 void setup(){
 	Serial.begin(115200);
 
+	pinMode(switchPin, INPUT_PULLUP);
+
 	// commands
 	SCmd.addDefaultHandler(unrecognized);
-	SCmd.addCommand("setmaxspeed",setMaxSpeed);
-	SCmd.addCommand("setspeed",setRotationSpeed);
-	SCmd.addCommand("setaccel",setAccel);
+	SCmd.addCommand("sms",setMaxSpeed);
+	SCmd.addCommand("ss",setRotationSpeed);
+	SCmd.addCommand("sa",setAccel);
 	// SCmd.addCommand("moveto",moveTo);
 	// SCmd.addCommand("move",move);
 	// SCmd.addCommand("runtoposition",runToPosition);
 	// SCmd.addCommand("run",run);
-	SCmd.addCommand("runspeed",runSpeed);
-	SCmd.addCommand("stop",stop);
-	SCmd.addCommand("getspeed",printSpeedMax);
+	SCmd.addCommand("rs",runSpeed);
+	SCmd.addCommand("st",stop);
+	SCmd.addCommand("gs",printSpeedMax);
 	SCmd.addCommand("r",rotate);
+	SCmd.addCommand("d",setDirection); // 0 = counterclockwise 1=clockwise
+	SCmd.addCommand("gc",getCounter);
+	SCmd.addCommand("sc",setCounter);
 
 	stepper.setEnablePin(enablePin);
 	stepper.setPinsInverted(false,false,true); //enable pin needs to be inverted
 	stepper.setMaxSpeed(maxSpeed);
 	stepper.setAcceleration(accel);
-	stepper.setSpeed(speed);
+	stepper.setSpeed(rotSpeed);
 
 	printSpeedMax();
 }
-
+int i = 0;
 void loop(){
 	SCmd.readSerial();
 
-	if (stepper.distanceToGo() == 0) {
+	if (stepperControl != 2 && stepper.distanceToGo() == 0) {
 		stepperControl = 0;
 	}
 
+	switchRotate();
 
 	switch (stepperControl) {
 	case 0:
@@ -81,8 +92,8 @@ void setRotationSpeed(){ //float speed
 	char *arg;
 	arg = SCmd.next();
 	if (arg != NULL) {
-		speed=(float)atoi(arg); // Converts a char string to an integer
-		stepper.setSpeed(speed);
+		rotSpeed=(float)atoi(arg); // Converts a char string to an integer
+		stepper.setSpeed(rotSpeed);
 		Serial.println("setspeed ok");
 		printSpeedMax();
 	}
@@ -111,11 +122,15 @@ void rotate(){ //long absolute
 		rotations=atoi(arg); // Converts a char string to an integer
 		stepper.move(calcDistance());
 		stepperControl = 1;
-		Serial.println("moveto ok");
+		counter++;
+		getCounter();
+		// Serial.println("rotate ok");
 	} else {
 		stepper.move(calcDistance());
 		stepperControl = 1;
-		Serial.println("moveto ok");
+		counter++;
+		getCounter();
+		// Serial.println("rotate ok");
 	}
 }
 
@@ -127,13 +142,55 @@ void stop(){
 
 void printSpeedMax(){
 	Serial.print("MaxSpeed: ");
-	Serial.println(stepper.maxSpeed());
+	Serial.println((stepper).maxSpeed());
 	Serial.print("speed: ");
-	Serial.println(stepper.speed());
+	Serial.println((int)stepper.speed());
+}
+
+void switchRotate(){
+	// Serial.println(digitalRead(switchPin));
+	if (!digitalRead(switchPin)){
+		if (stepper.distanceToGo() == 0) {
+			rotate();
+		}
+	}
+}
+
+void setDirection(){
+	char *arg;
+	arg = SCmd.next();
+	if (arg != NULL) {
+		clockwise=atoi(arg); // Converts a char string to an integer
+
+	if (clockwise){
+		Serial.println("rotation clockwise");
+	} else {
+		Serial.println("rotation counterclockwise");
+	}
+
+	}
+}
+
+void getCounter(){
+	Serial.print("counter: ");
+	Serial.println(counter);
+}
+void setCounter(){
+	char *arg;
+	arg = SCmd.next();
+	if (arg != NULL) {
+		counter=atoi(arg);
+		getCounter();
+	}
 }
 
 long calcDistance(){
-	return stepsPerRotation * rotations;
+	if(clockwise){
+		return stepsPerRotation * rotations * (-1);
+	}else {
+		return stepsPerRotation * rotations;
+	}
+
 }
 
 void unrecognized()
